@@ -6,6 +6,8 @@ output:
   html_document: 
     number_sections: true
     theme: paper
+editor_options: 
+  chunk_output_type: console
 ---
 # Introduction 
 
@@ -49,65 +51,146 @@ For each membrane voltage level, a mean ± SEM of I~norm~ for all analysed cells
 ```{r}
 # Read in data as a long format excel
 library(readxl)
-Tailcurrent_Equine_Human <- read_excel("Kv11.1_HEK293t_Equine_Human_Peak tail current_long format.xlsx")
+Tailcurrent_Equine_Human <- read_excel("Kv11.1_HEK293t_Equine_Human_Peak tail current_long format - Copy.xlsx")
 View(Tailcurrent_Equine_Human)
 names(Tailcurrent_Equine_Human)
-str(summary_df)
+
+# Normalize data to maximal peak tail current
+
+library(dplyr)
+df_norm <- Tailcurrent_Equine_Human %>%
+  group_by(Recording) %>%   # normalize per recording
+  mutate(
+    max_tailcurrent = max(`Baseline_substracted_peak_tail_current`, na.rm = TRUE),
+    norm_tailcurrent = `Baseline_substracted_peak_tail_current` / max_tailcurrent
+  ) %>%
+  ungroup()
+View(df_norm)
 
 # Make a summary data frame with mean and SEM for each species
 library(dplyr)
-summary_df <- Tailcurrent_Equine_Human %>%
+summary_df <- df_norm %>%
   group_by(Species, `Membrane_voltage`) %>%
   summarise(
-    mean_tailcurrent = mean(`Baseline_substracted_peak_tail_current`, na.rm = TRUE),
-    SEM_tailcurrent  = sd(`Baseline_substracted_peak_tail_current`, na.rm = TRUE) / sqrt(n()),
+    mean_Inorm = mean(`norm_tailcurrent`, na.rm = TRUE),
+    SEM_Inorm  = sd(`norm_tailcurrent`, na.rm = TRUE) / sqrt(n()),
     n = n(),
     .groups = "drop"
   )
 View(summary_df)
+str(summary_df)
+
+# Count the amount of cells analysed for each species
+n_per_species <- df_norm %>%
+  group_by(Species, Cell) %>%   # ensure unique recordings
+  summarise(.groups = "drop") %>%
+  count(Species, name = "n_cells")
+
+n_per_species
 
 # Make a wide summary data frame giving the tailcurrent for equine and human for each Vm
 library(tidyr)
 summary_wide <- summary_df %>%
-  select(Species, Membrane_voltage, mean_tailcurrent, SEM_tailcurrent) %>%
+  select(Species, Membrane_voltage, mean_Inorm, SEM_Inorm) %>%
   pivot_wider(
     names_from  = Species,
-    values_from = c(mean_tailcurrent, SEM_tailcurrent),
+    values_from = c(mean_Inorm, SEM_Inorm),
     names_glue  = "{.value}_{Species}"
   ) %>%
   arrange(Membrane_voltage)
 View(summary_wide)
 
-# Make a ggplot with mean + SEM
-library(ggplot2)
-ggplot(summary_df, aes(x = Membrane_voltage, y = mean_tailcurrent, color = Species)) +
-  geom_point(size = 3) +
-  geom_line() +
-  geom_errorbar(aes(ymin = mean_tailcurrent - SEM_tailcurrent,
-                    ymax = mean_tailcurrent + SEM_tailcurrent),
-                width = 0.1) +
-  theme_classic()
-
-
-
-# 2. Define Boltzmann Function
-boltzmann <- function(V, V05, k) {
+# Define Boltzmann function
+Boltzmann <- function(V, V05, k) {
   1 / (1 + exp((V05 - V) / k))
 }
 
-# 3. Non-linear Least Squares Fit
-# Start values: V05 (approx -20mV), k (approx 10-15mV)
-fit <- nls(current ~ boltzmann(voltage, V05, k), 
-           data = df, 
-           start = list(V05 = -20, k = 10))
+# Non-linear Least Squares Fit 
+V05_guess <- summary_df$Membrane_voltage[ which.min(abs(summary_df$mean_Inorm - 0.5)) ]
+k_guess   <- (max(summary_df$Membrane_voltage) - min(summary_df$Membrane_voltage)) / 8
 
-# 4. Results
-summary(fit)
 
-# 5. Plot the Fit
-plot(df$voltage, df$current, pch=19, xlab="Voltage (mV)", ylab="Normalized Current")
-lines(seq(-60, 60, 1), predict(fit, list(voltage=seq(-60, 60, 1))), col="red", lwd=2)
+Boltzmann_equine <- nls(
+  mean_Inorm ~ Boltzmann(Membrane_voltage, V05, k),
+  data  = filter(summary_df, Species == "Equine"),
+  start = list(V05 = V05_guess, k = k_guess))
+summary(Boltzmann_equine)
 
+Boltzmann_human <- nls(mean_Inorm ~ Boltzmann(Membrane_voltage, V05, k), 
+           data = filter(summary_df, Species == "Human"), 
+           start = list(V05 = V05_guess, k = k_guess))
+summary(Boltzmann_human)
+
+# Plot the fit
+vseq <- seq(min(summary_df$Membrane_voltage),
+            max(summary_df$Membrane_voltage),
+            length.out = 1000)
+
+df_pred_equine <- data.frame(
+  Membrane_voltage = vseq,
+  fit = predict(Boltzmann_equine, newdata = data.frame(Membrane_voltage = vseq)),
+  Species = "Equine"
+)
+
+df_pred_human <- data.frame(
+  Membrane_voltage = vseq,
+  fit = predict(Boltzmann_human, newdata = data.frame(Membrane_voltage = vseq)),
+  Species = "Human"
+)
+
+df_pred <- rbind(df_pred_equine, df_pred_human)
+
+
+library(ggplot2)
+my_cols <- c(
+  "Equine" = "#21918c",   
+  "Human"  = "#440154")
+
+my_shapes <- c(
+  "Equine" = 15,  
+  "Human"  = 17)
+
+
+legend_labels <- paste0(n_per_species$Species, " (n = ", n_per_species$n_cells, ")")
+
+names(legend_labels) <- n_per_species$Species
+legend_labels
+
+
+ggplot(summary_df, aes(x = Membrane_voltage, y = mean_Inorm, color = Species)) +
+  geom_point(aes(shape = Species), size = 3) +
+  geom_errorbar(aes(ymin = mean_Inorm - SEM_Inorm,
+                    ymax = mean_Inorm + SEM_Inorm),
+                width = 5, linewidth = 0.6) +
+  geom_line(data = df_pred,
+            aes(y = fit),
+            linewidth = 0.8) +
+  scale_color_manual(values = my_cols, labels = legend_labels) +
+  scale_shape_manual(values = my_shapes, labels = legend_labels) +
+  theme_classic() +
+  labs(x = "Membrane voltage (mV)", y = "Inorm (mean ± SEM)") +
+  scale_x_continuous(
+    breaks = seq(-80, 60, 20),    
+    limits = c(-80, 60)) +
+  scale_y_continuous(
+    breaks = seq(0, 1.0, 0.2),    
+    limits = c(0, 1.05))
+
+ggsave("IV_curve_Kv11.1_Equine_Human.png", width = 10, height = 3, dpi = 600)
+
+# Create a table with Vhalf and slope
+
+coef_equine <- summary(Boltzmann_equine)$coefficients
+coef_human  <- summary(Boltzmann_human)$coefficients
+
+Boltzmann_table <- data.frame(
+  Species = c("Equine", "Human"),
+  V05 = c(coef_equine["V05","Estimate"], coef_human["V05","Estimate"]),
+  V05_SEM = c(coef_equine["V05","Std. Error"], coef_human["V05","Std. Error"]),
+  k = c(coef_equine["k","Estimate"], coef_human["k","Estimate"]),
+  k_SEM = c(coef_equine["k","Std. Error"], coef_human["k","Std. Error"]))
+
+Boltzmann_table
 ```
 
 
