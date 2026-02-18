@@ -51,7 +51,7 @@ For each membrane voltage level, a mean ± SEM of I~norm~ for all analysed cells
 ```{r}
 # Read in data as a long format excel
 library(readxl)
-Tailcurrent_Equine_Human <- read_excel("Kv11.1_HEK293t_Equine_Human_Peak tail current_long format - Copy.xlsx")
+Tailcurrent_Equine_Human <- read_excel("Kv11.1_HEK293t_Equine_Human_Peak tail current_long format.xlsx")
 View(Tailcurrent_Equine_Human)
 names(Tailcurrent_Equine_Human)
 
@@ -129,57 +129,50 @@ vseq <- seq(min(summary_df$Membrane_voltage),
 df_pred_equine <- data.frame(
   Membrane_voltage = vseq,
   fit = predict(Boltzmann_equine, newdata = data.frame(Membrane_voltage = vseq)),
-  Species = "Equine"
-)
+  Species = "Equine")
 
 df_pred_human <- data.frame(
   Membrane_voltage = vseq,
   fit = predict(Boltzmann_human, newdata = data.frame(Membrane_voltage = vseq)),
-  Species = "Human"
-)
+  Species = "Human")
 
 df_pred <- rbind(df_pred_equine, df_pred_human)
 
-
 library(ggplot2)
 my_cols <- c(
-  "Equine" = "#21918c",   
-  "Human"  = "#440154")
+  "Equine" = "#660027",   
+  "Human"  = "#23815E")
 
 my_shapes <- c(
-  "Equine" = 15,  
-  "Human"  = 17)
+  "Equine" = 22,  
+  "Human"  = 24)
 
+my_fills <- c(
+  "Equine" = "#E48FB0",  
+  "Human"  = "#B0D8C9")
 
 legend_labels <- paste0(n_per_species$Species, " (n = ", n_per_species$n_cells, ")")
 
 names(legend_labels) <- n_per_species$Species
 legend_labels
 
-
 ggplot(summary_df, aes(x = Membrane_voltage, y = mean_Inorm, color = Species)) +
-  geom_point(aes(shape = Species), size = 3) +
-  geom_errorbar(aes(ymin = mean_Inorm - SEM_Inorm,
-                    ymax = mean_Inorm + SEM_Inorm),
-                width = 5, linewidth = 0.6) +
-  geom_line(data = df_pred,
-            aes(y = fit),
-            linewidth = 0.8) +
+  theme_classic() +
+  theme(panel.grid.major = element_line(color = "grey85", size = 0.3), panel.grid.minor = element_line(color = "grey92", size = 0.2)) +
+  geom_point(aes(shape = Species, color = Species, fill = Species),size = 4) +
+  geom_errorbar(aes(ymin = mean_Inorm - SEM_Inorm,ymax = mean_Inorm + SEM_Inorm),width = 2, linewidth = 0.6) +
+  geom_line(data = df_pred,aes(y = fit),linewidth = 0.8) +
   scale_color_manual(values = my_cols, labels = legend_labels) +
   scale_shape_manual(values = my_shapes, labels = legend_labels) +
-  theme_classic() +
+  scale_fill_manual(values = my_fills, labels = legend_labels) +
   labs(x = "Membrane voltage (mV)", y = "Inorm (mean ± SEM)") +
-  scale_x_continuous(
-    breaks = seq(-80, 60, 20),    
-    limits = c(-80, 60)) +
-  scale_y_continuous(
-    breaks = seq(0, 1.0, 0.2),    
-    limits = c(0, 1.05))
+  scale_x_continuous(breaks = seq(-80, 60, 20), minor_breaks = seq(-80, 60, 5),   limits = c(-82, 62), expand = c(0, 0)) +
+  scale_y_continuous(breaks = seq(0, 1.0, 0.2), minor_breaks = seq(0, 1, 0.05),    limits = c(-0.02, 1.02), expand = c(0, 0)) +
+  coord_cartesian(clip = "off")
 
-ggsave("IV_curve_Kv11.1_Equine_Human.png", width = 10, height = 3, dpi = 600)
+ggsave("IV_curve_Kv11.1_Equine_Human.png", width = 10, height = 5, dpi = 600)
 
 # Create a table with Vhalf and slope
-
 coef_equine <- summary(Boltzmann_equine)$coefficients
 coef_human  <- summary(Boltzmann_human)$coefficients
 
