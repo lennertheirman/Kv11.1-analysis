@@ -1,30 +1,122 @@
 ---
-title: "Kv11.1 gating kinetics and pharmacology analysis"
+title: "K~v~11.1 gating kinetics and pharmacology analysis"
 author: "Lennert Heirman"
 date: "`r Sys.Date()`"
-output: html_document
+output: 
+  html_document: 
+    number_sections: true
+    theme: paper
 ---
+# Introduction 
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+This is an R Markdown document for the analysis of patch clamp experiments of K~v~11.1/ERG channel, which is responsible for the IKr current. First, a comparison of gating kinetics will be made using a human and equine clone of KCNH2. After this, current inhibition by different drugs or channel blockers will be investigated.
+
+A good paper with experimental protocols and notes on the analysis is the review of hERG by Vandenberg et al. (doi.org/10.1152/physrev.00036.2011). I will also use this paper to help me for analysis of gating kinetics of my clones. The clone used for human K~v~11.1 is the same as the one used in Saenen et al. (doi.org/10.1529/biophysj.106.087247) for wild-type hERG. I will also use this paper to guide me in the analysis of gating kinetics.
+
+# Set working directory
+```{r}
+setwd("C:/R_Projects/Kv11.1 analysis")
 ```
 
-## R Markdown
+# Gating kinetics of K~v~11.1
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+## Steady state activation
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+The voltage-dependence of K~v~11.1 activation is assessed using tail current analysis. From a holding potential of -90 mV, channels are activated with a series of depolarizing P1 pulses (typically from -80 mV to -60 mV for wild-type K~v~11.1), and tail currents are recorded during a repolarizing P2 pulse (typically -60 mV). Inactivation of Kv11.1 at depolarized potentials means significant rectification is seen during the P1 pulse, while fast recovery from inactivation relative to deactivation ensures that the magnitude of the tail current during P2 is an accurate representation of the proportion of channels activated during the preceding P1 pulse. A fit of the Boltzmann equation to the peak tail current measured during P2 allows an assessment of the V0.5 of activation as well as a slope factor that approximates the activation gating charge.
 
-```{r cars}
-summary(cars)
+As a consequence of the slow kinetics of K~v~11.1 activation, it is important to ensure the P1 pulse is of sufficient duration to allow activation to reach as close as possible to steady state. Indeed, the data obtained from a tail pulse protocol should really be referred to as isochronal activation data with specific mention of the duration of the P1 pulse duration.
+
+Activation protocol used:
+
+  - Holding level: -80 mV
+  - P1: 2s, depolarizing pulses from -80 mV to 60 mV (15 sweeps)
+  - P2: 400 ms, repolarising pulse -40 mV
+  - Interpulse interval: 15s
+  
+Recordings were made at room temperature
+Lowpass filtered and sampled at 1-10 kHz
+
+To determine voltage dependence of activation, normalized peak tail currents will be fitted against a Boltzmann equation: y = 1/(1 + exp[-(E - E~1/2~)/k]) with:
+
+  - E: the applied voltage 
+  - E~1/2~: the voltage at which 50% of the channels are activated
+  - k: the slope factor. 1/k corresponds to zF/RT in which z is the equivalent charge and F, R, and T have their usual meanings
+  
+Normalized peak current is obtained by making a mean of the peak tail current during the repolarising P2 pulse for each previous Epoch level (which is the voltage of the depolarising P1 pulse) using Clampex software. For each cell, the value of the membrane voltage during P1 is put in an excel document with the corresponding peak tail current. Each value is then divided by the maximal peak tail current of that cell (normally during the last depolarising step) to obtain a normalized peak tail current (I~norm~ = I/I~max~).
+
+For each membrane voltage level, a mean ± SEM of I~norm~ for all analysed cells is made, these values are then plotted and fitted with the abovementioned Boltzmann curve. 
+
+```{r}
+# Read in data as a long format excel
+library(readxl)
+Tailcurrent_Equine_Human <- read_excel("Kv11.1_HEK293t_Equine_Human_Peak tail current_long format.xlsx")
+View(Tailcurrent_Equine_Human)
+names(Tailcurrent_Equine_Human)
+str(summary_df)
+
+# Make a summary data frame with mean and SEM for each species
+library(dplyr)
+summary_df <- Tailcurrent_Equine_Human %>%
+  group_by(Species, `Membrane_voltage`) %>%
+  summarise(
+    mean_tailcurrent = mean(`Baseline_substracted_peak_tail_current`, na.rm = TRUE),
+    SEM_tailcurrent  = sd(`Baseline_substracted_peak_tail_current`, na.rm = TRUE) / sqrt(n()),
+    n = n(),
+    .groups = "drop"
+  )
+View(summary_df)
+
+# Make a wide summary data frame giving the tailcurrent for equine and human for each Vm
+library(tidyr)
+summary_wide <- summary_df %>%
+  select(Species, Membrane_voltage, mean_tailcurrent, SEM_tailcurrent) %>%
+  pivot_wider(
+    names_from  = Species,
+    values_from = c(mean_tailcurrent, SEM_tailcurrent),
+    names_glue  = "{.value}_{Species}"
+  ) %>%
+  arrange(Membrane_voltage)
+View(summary_wide)
+
+# Make a ggplot with mean + SEM
+library(ggplot2)
+ggplot(summary_df, aes(x = Membrane_voltage, y = mean_tailcurrent, color = Species)) +
+  geom_point(size = 3) +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean_tailcurrent - SEM_tailcurrent,
+                    ymax = mean_tailcurrent + SEM_tailcurrent),
+                width = 0.1) +
+  theme_classic()
+
+
+
+# 2. Define Boltzmann Function
+boltzmann <- function(V, V05, k) {
+  1 / (1 + exp((V05 - V) / k))
+}
+
+# 3. Non-linear Least Squares Fit
+# Start values: V05 (approx -20mV), k (approx 10-15mV)
+fit <- nls(current ~ boltzmann(voltage, V05, k), 
+           data = df, 
+           start = list(V05 = -20, k = 10))
+
+# 4. Results
+summary(fit)
+
+# 5. Plot the Fit
+plot(df$voltage, df$current, pch=19, xlab="Voltage (mV)", ylab="Normalized Current")
+lines(seq(-60, 60, 1), predict(fit, list(voltage=seq(-60, 60, 1))), col="red", lwd=2)
+
 ```
 
-## Including Plots
 
-You can also embed plots, for example:
+## Rates of activation
 
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
+## Rates of deactivation
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+## Rates of inactivation
+
+
+# Current inhibtion by adding drugs or channel blockers
+
