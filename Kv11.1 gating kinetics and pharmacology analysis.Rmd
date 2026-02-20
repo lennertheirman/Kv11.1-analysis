@@ -57,14 +57,23 @@ Tailcurrent_Equine_Human <- read_excel("Kv11.1_CHO_Equine_Human_Peak tail curren
 View(Tailcurrent_Equine_Human)
 names(Tailcurrent_Equine_Human)
 
-# Normalize data to maximal peak tail current
-
+# Substract baseline
 library(dplyr)
-df_norm <- Tailcurrent_Equine_Human %>%
+df_baseline_substracted <- Tailcurrent_Equine_Human %>%
+  group_by(Recording) %>%
+  mutate(
+    min_tailcurrent = min(Peak_tail_current, na.rm = TRUE),
+    baseline_substracted_tailcurrent = Peak_tail_current - min_tailcurrent
+  ) %>%
+  ungroup()
+View(df_baseline_substracted)
+
+# Normalize data to maximal peak tail current
+df_norm <- df_baseline_substracted %>%
   group_by(Recording) %>%   # normalize per recording
   mutate(
-    max_tailcurrent = max(`Baseline_substracted_peak_tail_current`, na.rm = TRUE),
-    norm_tailcurrent = `Baseline_substracted_peak_tail_current` / max_tailcurrent
+    max_tailcurrent = max(`baseline_substracted_tailcurrent`, na.rm = TRUE),
+    norm_tailcurrent = `baseline_substracted_tailcurrent` / max_tailcurrent
   ) %>%
   ungroup()
 View(df_norm)
