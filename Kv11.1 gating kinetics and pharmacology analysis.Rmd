@@ -50,6 +50,7 @@ Normalized peak current is obtained by making a mean of the peak tail current du
 
 For each membrane voltage level, a mean ± SEM of I~norm~ for all analysed cells is made, these values are then plotted and fitted with the abovementioned Boltzmann curve. 
 
+### P1 duration 2000 ms
 ```{r}
 # Read in data as a long format excel
 library(readxl)
@@ -85,7 +86,7 @@ View(df_2000)
 
 # Make a summary data frame with mean and SEM for each species
 library(dplyr)
-summary_df <- df_2000 %>%
+summary_df_2000 <- df_2000 %>%
   group_by(Species, `Membrane_voltage`) %>%
   summarise(
     mean_Inorm = mean(`norm_tailcurrent`, na.rm = TRUE),
@@ -93,20 +94,20 @@ summary_df <- df_2000 %>%
     n = n(),
     .groups = "drop"
   )
-View(summary_df)
-str(summary_df)
+View(summary_df_2000)
+str(summary_df_2000)
 
 # Count the amount of cells analysed for each species
-n_per_species <- df_2000 %>%
+n_per_species_2000 <- df_2000 %>%
   group_by(Species, Cell) %>%   # ensure unique recordings
   summarise(.groups = "drop") %>%
   count(Species, name = "n_cells")
 
-n_per_species
+n_per_species_2000
 
 # Make a wide summary data frame giving the tailcurrent for equine and human for each Vm
 library(tidyr)
-summary_wide <- summary_df %>%
+summary_wide_2000 <- summary_df_2000 %>%
   select(Species, Membrane_voltage, mean_Inorm, SEM_Inorm) %>%
   pivot_wider(
     names_from  = Species,
@@ -114,7 +115,7 @@ summary_wide <- summary_df %>%
     names_glue  = "{.value}_{Species}"
   ) %>%
   arrange(Membrane_voltage)
-View(summary_wide)
+View(summary_wide_2000)
 
 # Define Boltzmann function
 Boltzmann <- function(V, V05, k) {1/(1 + exp((V05 - V)/ k))}
@@ -125,38 +126,38 @@ guess_params <- function(df) {
   k_g   <- (max(df$Membrane_voltage) - min(df$Membrane_voltage)) / 8
   list(V05 = V05_g, k = k_g)}
 
-g_eq <- guess_params(filter(summary_df, Species == "Equine"))
-g_hu <- guess_params(filter(summary_df, Species == "Human"))
+g_eq_2000 <- guess_params(filter(summary_df_2000, Species == "Equine"))
+g_hu_2000 <- guess_params(filter(summary_df_2000, Species == "Human"))
 
 
 # Non-linear Least Squares Fit
-Boltzmann_equine <- nls(
+Boltzmann_equine_2000 <- nls(
   mean_Inorm ~ Boltzmann(Membrane_voltage, V05, k),
-  data  = filter(summary_df, Species == "Equine"),
-  start = list(V05 = g_eq$V05, k = g_eq$k))
-summary(Boltzmann_equine)
+  data  = filter(summary_df_2000, Species == "Equine"),
+  start = list(V05 = g_eq_2000$V05, k = g_eq_2000$k))
+summary(Boltzmann_equine_2000)
 
-Boltzmann_human <- nls(mean_Inorm ~ Boltzmann(Membrane_voltage, V05, k), 
-           data = filter(summary_df, Species == "Human"), 
-           start = list(V05 = g_hu$V05, k = g_hu$k))
-summary(Boltzmann_human)
+Boltzmann_human_2000 <- nls(mean_Inorm ~ Boltzmann(Membrane_voltage, V05, k), 
+           data = filter(summary_df_2000, Species == "Human"), 
+           start = list(V05 = g_hu_2000$V05, k = g_hu_2000$k))
+summary(Boltzmann_human_2000)
 
 # Plot the fit
-vseq <- seq(min(summary_df$Membrane_voltage),
-            max(summary_df$Membrane_voltage),
+vseq_2000 <- seq(min(summary_df_2000$Membrane_voltage),
+            max(summary_df_2000$Membrane_voltage),
             length.out = 1000)
 
-df_pred_equine <- data.frame(
-  Membrane_voltage = vseq,
-  fit = predict(Boltzmann_equine, newdata = data.frame(Membrane_voltage = vseq)),
+df_pred_equine_2000 <- data.frame(
+  Membrane_voltage = vseq_2000,
+  fit = predict(Boltzmann_equine_2000, newdata = data.frame(Membrane_voltage = vseq_2000)),
   Species = "Equine")
 
-df_pred_human <- data.frame(
-  Membrane_voltage = vseq,
-  fit = predict(Boltzmann_human, newdata = data.frame(Membrane_voltage = vseq)),
+df_pred_human_2000 <- data.frame(
+  Membrane_voltage = vseq_2000,
+  fit = predict(Boltzmann_human_2000, newdata = data.frame(Membrane_voltage = vseq_2000)),
   Species = "Human")
 
-df_pred <- rbind(df_pred_equine, df_pred_human)
+df_pred_2000 <- rbind(df_pred_equine_2000, df_pred_human_2000)
 
 library(ggplot2)
 my_cols <- c(
@@ -171,39 +172,196 @@ my_fills <- c(
   "Equine" = "#B0D8C9",  
   "Human"  = "#E48FB0")
 
-legend_labels <- paste0(n_per_species$Species, " (n = ", n_per_species$n_cells, ")")
+legend_labels_2000 <- paste0(n_per_species_2000$Species, " (n = ", n_per_species_2000$n_cells, ")")
 
-names(legend_labels) <- n_per_species$Species
-legend_labels
+names(legend_labels_2000) <- n_per_species_2000$Species
+legend_labels_2000
 
-ggplot(summary_df, aes(x = Membrane_voltage, y = mean_Inorm, color = Species)) +
+ggplot(summary_df_2000, aes(x = Membrane_voltage, y = mean_Inorm, color = Species)) +
   theme_classic() +
   theme(panel.grid.major = element_line(color = "grey85", size = 0.3), panel.grid.minor = element_line(color = "grey92", size = 0.2)) +
   geom_point(aes(shape = Species, color = Species, fill = Species),size = 4) +
   geom_errorbar(aes(ymin = mean_Inorm - SEM_Inorm,ymax = mean_Inorm + SEM_Inorm),width = 2, linewidth = 0.6) +
-  geom_line(data = df_pred,aes(y = fit),linewidth = 0.8) +
-  scale_color_manual(values = my_cols, labels = legend_labels) +
-  scale_shape_manual(values = my_shapes, labels = legend_labels) +
-  scale_fill_manual(values = my_fills, labels = legend_labels) +
-  labs(x = "Membrane voltage (mV)", y = "Inorm (mean ± SEM)") +
+  geom_line(data = df_pred_2000,aes(y = fit),linewidth = 0.8) +
+  scale_color_manual(values = my_cols, labels = legend_labels_2000) +
+  scale_shape_manual(values = my_shapes, labels = legend_labels_2000) +
+  scale_fill_manual(values = my_fills, labels = legend_labels_2000) +
+  labs(x = "Membrane voltage (mV)", y = "Inorm (mean ± SEM)",title = "P1 duration 2000 ms") +
   scale_x_continuous(breaks = seq(-80, 60, 20), minor_breaks = seq(-80, 60, 5),   limits = c(-82, 62), expand = c(0, 0)) +
   scale_y_continuous(breaks = seq(0, 1.0, 0.2), minor_breaks = seq(0, 1, 0.05),    limits = c(-0.02, 1.02), expand = c(0, 0)) +
   coord_cartesian(clip = "off")
 
-ggsave("IV_curve_Kv11.1_Equine_Human.png", width = 10, height = 5, dpi = 600)
+ggsave("IV_curve_Kv11.1_Equine_Human_P1_2000.png", width = 10, height = 5, dpi = 600)
 
 # Create a table with Vhalf and slope
-coef_equine <- summary(Boltzmann_equine)$coefficients
-coef_human  <- summary(Boltzmann_human)$coefficients
+coef_equine_2000 <- summary(Boltzmann_equine_2000)$coefficients
+coef_human_2000  <- summary(Boltzmann_human_2000)$coefficients
 
-Boltzmann_table <- data.frame(
+Boltzmann_table_2000 <- data.frame(
   Species = c("Equine", "Human"),
-  V05 = c(coef_equine["V05","Estimate"], coef_human["V05","Estimate"]),
-  V05_SEM = c(coef_equine["V05","Std. Error"], coef_human["V05","Std. Error"]),
-  k = c(coef_equine["k","Estimate"], coef_human["k","Estimate"]),
-  k_SEM = c(coef_equine["k","Std. Error"], coef_human["k","Std. Error"]))
+  V05 = c(coef_equine_2000["V05","Estimate"], coef_human_2000["V05","Estimate"]),
+  V05_SEM = c(coef_equine_2000["V05","Std. Error"], coef_human_2000["V05","Std. Error"]),
+  k = c(coef_equine_2000["k","Estimate"], coef_human_2000["k","Estimate"]),
+  k_SEM = c(coef_equine_2000["k","Std. Error"], coef_human_2000["k","Std. Error"]))
 
-Boltzmann_table
+Boltzmann_table_2000
+```
+
+### P1 duration 4000 ms
+```{r}
+# Read in data as a long format excel
+library(readxl)
+Tailcurrent_Equine_Human <- read_excel("Kv11.1_CHO_Equine_Human_Peak tail current_long format.xlsx")
+View(Tailcurrent_Equine_Human)
+names(Tailcurrent_Equine_Human)
+
+# Substract baseline
+library(dplyr)
+df_baseline_substracted <- Tailcurrent_Equine_Human %>%
+  group_by(Recording) %>%
+  mutate(
+    min_tailcurrent = min(Peak_tail_current, na.rm = TRUE),
+    baseline_substracted_tailcurrent = Peak_tail_current - min_tailcurrent
+  ) %>%
+  ungroup()
+View(df_baseline_substracted)
+
+# Normalize data to maximal peak tail current
+df_norm <- df_baseline_substracted %>%
+  group_by(Recording) %>%   # normalize per recording
+  mutate(
+    max_tailcurrent = max(`baseline_substracted_tailcurrent`, na.rm = TRUE),
+    norm_tailcurrent = `baseline_substracted_tailcurrent` / max_tailcurrent
+  ) %>%
+  ungroup()
+View(df_norm)
+
+# Select only recordings with a P1 pulse of 4000 ms
+df_4000 <- df_norm %>%
+  filter(P1 == 4000)
+View(df_4000)
+
+# Make a summary data frame with mean and SEM for each species
+library(dplyr)
+summary_df_4000<- df_4000 %>%
+  group_by(Species, `Membrane_voltage`) %>%
+  summarise(
+    mean_Inorm = mean(`norm_tailcurrent`, na.rm = TRUE),
+    SEM_Inorm  = sd(`norm_tailcurrent`, na.rm = TRUE) / sqrt(n()),
+    n = n(),
+    .groups = "drop"
+  )
+View(summary_df_4000)
+str(summary_df_4000)
+
+# Count the amount of cells analysed for each species
+n_per_species_4000 <- df_4000 %>%
+  group_by(Species, Cell) %>%   # ensure unique recordings
+  summarise(.groups = "drop") %>%
+  count(Species, name = "n_cells")
+
+n_per_species_4000
+
+# Make a wide summary data frame giving the tailcurrent for equine and human for each Vm
+library(tidyr)
+summary_wide_4000 <- summary_df_4000 %>%
+  select(Species, Membrane_voltage, mean_Inorm, SEM_Inorm) %>%
+  pivot_wider(
+    names_from  = Species,
+    values_from = c(mean_Inorm, SEM_Inorm),
+    names_glue  = "{.value}_{Species}"
+  ) %>%
+  arrange(Membrane_voltage)
+View(summary_wide_4000)
+
+# Define Boltzmann function
+Boltzmann <- function(V, V05, k) {1/(1 + exp((V05 - V)/ k))}
+
+# Species-specific initial guesses
+guess_params <- function(df) {
+  V05_g <- df$Membrane_voltage[which.min(abs(df$mean_Inorm - 0.5))]
+  k_g   <- (max(df$Membrane_voltage) - min(df$Membrane_voltage)) / 8
+  list(V05 = V05_g, k = k_g)}
+
+g_eq_4000 <- guess_params(filter(summary_df_4000, Species == "Equine"))
+g_hu_4000 <- guess_params(filter(summary_df_4000, Species == "Human"))
+
+
+# Non-linear Least Squares Fit
+Boltzmann_equine_4000 <- nls(
+  mean_Inorm ~ Boltzmann(Membrane_voltage, V05, k),
+  data  = filter(summary_df_4000, Species == "Equine"),
+  start = list(V05 = g_eq_4000$V05, k = g_eq_4000$k))
+summary(Boltzmann_equine_4000)
+
+Boltzmann_human_4000 <- nls(mean_Inorm ~ Boltzmann(Membrane_voltage, V05, k), 
+           data = filter(summary_df_4000, Species == "Human"), 
+           start = list(V05 = g_hu_4000$V05, k = g_hu_4000$k))
+summary(Boltzmann_human_4000)
+
+# Plot the fit
+vseq_4000 <- seq(min(summary_df_4000$Membrane_voltage),
+            max(summary_df_4000$Membrane_voltage),
+            length.out = 1000)
+
+df_pred_equine_4000 <- data.frame(
+  Membrane_voltage = vseq_4000,
+  fit = predict(Boltzmann_equine_4000, newdata = data.frame(Membrane_voltage = vseq_4000)),
+  Species = "Equine")
+
+df_pred_human_4000 <- data.frame(
+  Membrane_voltage = vseq_4000,
+  fit = predict(Boltzmann_human_4000, newdata = data.frame(Membrane_voltage = vseq_4000)),
+  Species = "Human")
+
+df_pred_4000 <- rbind(df_pred_equine_4000, df_pred_human_4000)
+
+library(ggplot2)
+my_cols <- c(
+  "Equine" = "#23815E",   
+  "Human"  = "#660027")
+
+my_shapes <- c(
+  "Equine" = 22,  
+  "Human"  = 24)
+
+my_fills <- c(
+  "Equine" = "#B0D8C9",  
+  "Human"  = "#E48FB0")
+
+legend_labels_4000 <- paste0(n_per_species_4000$Species, " (n = ", n_per_species_4000$n_cells, ")")
+
+names(legend_labels_4000) <- n_per_species_4000$Species
+legend_labels_4000
+
+ggplot(summary_df_4000, aes(x = Membrane_voltage, y = mean_Inorm, color = Species)) +
+  theme_classic() +
+  theme(panel.grid.major = element_line(color = "grey85", size = 0.3), panel.grid.minor = element_line(color = "grey92", size = 0.2)) +
+  geom_point(aes(shape = Species, color = Species, fill = Species),size = 4) +
+  geom_errorbar(aes(ymin = mean_Inorm - SEM_Inorm,ymax = mean_Inorm + SEM_Inorm),width = 2, linewidth = 0.6) +
+  geom_line(data = df_pred_4000,aes(y = fit),linewidth = 0.8) +
+  scale_color_manual(values = my_cols, labels = legend_labels_4000) +
+  scale_shape_manual(values = my_shapes, labels = legend_labels_4000) +
+  scale_fill_manual(values = my_fills, labels = legend_labels_4000) +
+  labs(x = "Membrane voltage (mV)", y = "Inorm (mean ± SEM)",title = "P1 duration 4000 ms") +
+  scale_x_continuous(breaks = seq(-80, 60, 20), minor_breaks = seq(-80, 60, 5),   limits = c(-82, 62), expand = c(0, 0)) +
+  scale_y_continuous(breaks = seq(0, 1.0, 0.2), minor_breaks = seq(0, 1, 0.05),    limits = c(-0.02, 1.02), expand = c(0, 0)) +
+  coord_cartesian(clip = "off")
+
+ggsave("IV_curve_Kv11.1_Equine_Human_P1_4000.png", width = 10, height = 5, dpi = 600)
+
+# Create a table with Vhalf and slope
+coef_equine_4000 <- summary(Boltzmann_equine_4000)$coefficients
+coef_human_4000  <- summary(Boltzmann_human_4000)$coefficients
+
+Boltzmann_table_4000 <- data.frame(
+  Species = c("Equine", "Human"),
+  V05 = c(coef_equine_4000["V05","Estimate"], coef_human_4000["V05","Estimate"]),
+  V05_SEM = c(coef_equine_4000["V05","Std. Error"], coef_human_4000["V05","Std. Error"]),
+  k = c(coef_equine_4000["k","Estimate"], coef_human_4000["k","Estimate"]),
+  k_SEM = c(coef_equine_4000["k","Std. Error"], coef_human_4000["k","Std. Error"]))
+
+Boltzmann_table_4000
 ```
 
 ## Rates of activation
