@@ -364,6 +364,16 @@ Boltzmann_table_4000 <- data.frame(
 Boltzmann_table_4000
 ```
 
+### Ceate csv file with Boltzmann parameters
+```{r}
+Boltzmann_combined <- rbind(
+  cbind(P1 = 2000, Boltzmann_table_2000),
+  cbind(P1 = 4000, Boltzmann_table_4000)
+)
+
+write.csv(Boltzmann_combined, "Kv11.1_Equine_Human_Boltzmann_coefficients.csv", row.names = FALSE)
+```
+
 ## Rates of activation
 
 ## Rates of deactivation
