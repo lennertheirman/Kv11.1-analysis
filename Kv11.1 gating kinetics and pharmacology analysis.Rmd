@@ -50,6 +50,8 @@ Normalized peak current is obtained by making a mean of the peak tail current du
 
 For each membrane voltage level, a mean ± SEM of I~norm~ for all analysed cells is made, these values are then plotted and fitted with the abovementioned Boltzmann curve. 
 
+### P1 duration 500 ms
+
 ### P1 duration 2000 ms
 ```{r}
 # Read in data as a long format excel
