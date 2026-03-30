@@ -734,3 +734,58 @@ write.csv(Boltzmann_combined, "Kv11.1_Equine_Human_Boltzmann_coefficients.csv", 
 
 # Current inhibtion by adding drugs or channel blockers
 
+## Fractional inhibition of peak tail curren
+```{r}
+# Read in data as a long format excel
+library(readxl)
+Pharmacology_Equine_Human <- read_excel("Kv11.1_HEK293t_Equine_Human_Pharmacology_long format.xlsx")
+View(Pharmacology_Equine_Human)
+names(Pharmacology_Equine_Human)
+
+#Select only sweep at P1 40mV
+library(dplyr)
+library(tidyr)
+
+Fractionalblock_flecainide <- Pharmacology_Equine_Human %>%
+  filter(Compound %in% c("Flecainide Acetate", "Vehicle")) %>%
+  filter(Membrane_voltage == 40) %>%
+  filter(Compound_conc_µM %in% c(0, 1.5)) %>%
+  group_by(Cell) %>%
+    filter(n_distinct(Compound_conc_µM) == 2) %>%
+    ungroup() %>%  #only use cells that both have a compound and vehicle control
+  select(Cell, Species, Compound_conc_µM, Peak_tail_current) %>%
+  pivot_wider(
+    names_from = Compound_conc_µM,
+    values_from = Peak_tail_current,
+    names_prefix = "tailcurrent_"
+  ) %>%
+  mutate(
+    fraction = tailcurrent_1.5 / tailcurrent_0,
+    percent_block = (1 - fraction) * 100
+  )
+
+View(Fractionalblock_flecainide)
+  
+#Make a boxplot
+library(ggplot2)
+
+ggplot(Fractionalblock_flecainide, aes(x = Species, y = percent_block, color = Species, fill=Species)) +
+  geom_boxplot(coef = 1.5, width = 0.6,lwd = 0.7,staplewidth = 0.1) +
+  stat_summary(fun=mean, geom="point",shape=8, size=4,col="black")+
+  labs(
+    title = "Fractional Block at 1.5 µM Flecainide",
+    y = "Percent block (%)",
+    x = "Species") +
+  theme_classic() +
+  theme(legend.position = "none") +
+  scale_y_continuous(limits = c(0, 100))+
+  scale_fill_manual(values = my_fills) + 
+  scale_color_manual(values = my_cols)
+
+#Wilcoxon rank-sum/Mann-Whitney U test
+wilcox.test(percent_block ~ Species,
+            data = Fractionalblock_flecainide,
+            alternative = "greater")
+```
+
+
