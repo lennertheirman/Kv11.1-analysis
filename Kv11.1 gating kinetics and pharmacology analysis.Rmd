@@ -54,7 +54,8 @@ For each membrane voltage level, a mean ± SEM of I~norm~ for all analysed cells
 ```{r}
 # Read in data as a long format excel
 library(readxl)
-Tailcurrent_Equine_Human <- read_excel("Kv11.1_HEK293t_Equine_Human_Peak tail current_long format.xlsx")
+Tailcurrent_Equine_Human <- read_excel("Kv11.1_HEK293t_Equine_Human_Gating kinetics_long format.xlsx", 
+    sheet = "SS activation")
 View(Tailcurrent_Equine_Human)
 names(Tailcurrent_Equine_Human)
 
@@ -211,7 +212,8 @@ Boltzmann_table_500
 ```{r}
 # Read in data as a long format excel
 library(readxl)
-Tailcurrent_Equine_Human <- read_excel("Kv11.1_HEK293t_Equine_Human_Peak tail current_long format.xlsx")
+Tailcurrent_Equine_Human <- read_excel("Kv11.1_HEK293t_Equine_Human_Gating kinetics_long format.xlsx", 
+    sheet = "SS activation")
 View(Tailcurrent_Equine_Human)
 names(Tailcurrent_Equine_Human)
 
@@ -368,7 +370,8 @@ Boltzmann_table_2000
 ```{r}
 # Read in data as a long format excel
 library(readxl)
-Tailcurrent_Equine_Human <- read_excel("Kv11.1_HEK293t_Equine_Human_Peak tail current_long format.xlsx")
+Tailcurrent_Equine_Human <- read_excel("Kv11.1_HEK293t_Equine_Human_Gating kinetics_long format.xlsx", 
+    sheet = "SS activation")
 View(Tailcurrent_Equine_Human)
 names(Tailcurrent_Equine_Human)
 
@@ -734,11 +737,12 @@ write.csv(Boltzmann_combined, "Kv11.1_Equine_Human_Boltzmann_coefficients.csv", 
 
 # Current inhibtion by adding drugs or channel blockers
 
-## Fractional inhibition of peak tail curren
+## Fractional inhibition of peak tail current
 ```{r}
 # Read in data as a long format excel
 library(readxl)
-Pharmacology_Equine_Human <- read_excel("Kv11.1_HEK293t_Equine_Human_Pharmacology_long format.xlsx")
+Pharmacology_Equine_Human <- read_excel("Kv11.1_HEK293t_Equine_Human_Pharmacology_long format.xlsx", 
+    sheet = "Flecainide - SS activation ")
 View(Pharmacology_Equine_Human)
 names(Pharmacology_Equine_Human)
 
@@ -747,7 +751,7 @@ library(dplyr)
 library(tidyr)
 
 Fractionalblock_flecainide <- Pharmacology_Equine_Human %>%
-  filter(Compound %in% c("Flecainide Acetate", "Vehicle")) %>%
+  filter(Compound %in% c("Flecainide Acetate", "Vehicle","None")) %>%
   filter(Membrane_voltage == 40) %>%
   filter(Compound_conc_µM %in% c(0, 1.5)) %>%
   group_by(Cell) %>%
