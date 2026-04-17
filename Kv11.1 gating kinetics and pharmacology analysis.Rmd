@@ -746,39 +746,46 @@ Pharmacology_Equine_Human <- read_excel("Kv11.1_HEK293t_Equine_Human_Pharmacolog
 View(Pharmacology_Equine_Human)
 names(Pharmacology_Equine_Human)
 
-#Select only sweep at P1 40mV
+#Select correct data
 library(dplyr)
 library(tidyr)
 
-Fractionalblock_flecainide <- Pharmacology_Equine_Human %>%
-  filter(Compound %in% c("Flecainide Acetate", "Vehicle","None")) %>%
+df <- Pharmacology_Equine_Human %>%
+  filter(Compound %in% c("Flecainide Acetate", "Vehicle")) %>%
   filter(Membrane_voltage == 40) %>%
-  filter(Compound_conc_µM %in% c(0, 1.5)) %>%
+  filter(DMSO_conc == 0.1) %>%
+  filter(Compound_conc_µM %in% c(0,0.1,0.3,1,1.5,3,10,30,100)) %>%
+  select(Cell, Species, Compound_conc_µM, Peak_tail_current)
+
+vehicle_df <- df %>%
+  filter(Compound_conc_µM == 0) %>%
+  select(Cell, tailcurrent_0 = Peak_tail_current)
+
+Fractionalblock_flecainide <- df %>%
   group_by(Cell) %>%
-    filter(n_distinct(Compound_conc_µM) == 2) %>%
-    ungroup() %>%  #only use cells that both have a compound and vehicle control
-  select(Cell, Species, Compound_conc_µM, Peak_tail_current) %>%
-  pivot_wider(
-    names_from = Compound_conc_µM,
-    values_from = Peak_tail_current,
-    names_prefix = "tailcurrent_"
-  ) %>%
+  filter(any(Compound_conc_µM == 0)) %>%
+  ungroup() %>%
+  left_join(vehicle_df, by = "Cell") %>%
   mutate(
-    fraction = tailcurrent_1.5 / tailcurrent_0,
+    fraction = Peak_tail_current / tailcurrent_0,
     percent_block = (1 - fraction) * 100
   )
 
 View(Fractionalblock_flecainide)
   
-#Make a boxplot
+#Boxplot block at 1.5 µM
 library(ggplot2)
 
-ggplot(Fractionalblock_flecainide, aes(x = Species, y = percent_block, color = Species, fill=Species)) +
+
+Fractionalblock_flecainide_1_5 <- Fractionalblock_flecainide %>%
+  filter(Compound_conc_µM == 1.5)
+
+ggplot(Fractionalblock_flecainide_1_5, aes(x = Species, y = percent_block, color = Species, fill=Species)) +
   geom_boxplot(coef = 1.5, width = 0.6,lwd = 0.7,staplewidth = 0.1) +
   stat_summary(fun=mean, geom="point",shape=8, size=4,col="black")+
   labs(
-    title = "Fractional Block at 1.5 µM Flecainide",
-    y = "Percent block (%)",
+    title = "Fractional current inhibition at 1.5 µM Flecainide",
+    y = "Percentage block (%)",
     x = "Species") +
   theme_classic() +
   theme(legend.position = "none") +
@@ -786,10 +793,34 @@ ggplot(Fractionalblock_flecainide, aes(x = Species, y = percent_block, color = S
   scale_fill_manual(values = my_fills) + 
   scale_color_manual(values = my_cols)
 
-#Wilcoxon rank-sum/Mann-Whitney U test
-wilcox.test(percent_block ~ Species,
-            data = Fractionalblock_flecainide,
-            alternative = "greater")
+#Concentration-effect curve
+
+library(drc)
+
+fit_df <- Fractionalblock_flecainide %>%
+  filter(Compound_conc_µM %in% c(0.1, 0.3, 1, 3, 10, 30, 10,100))
+
+fit_species <- drm(
+  percent_block ~ Compound_conc_µM,
+  curveid = Species,
+  data = fit_df,
+  fct = LL.4(names = c("Hill", "Bottom", "Top", "IC50"))
+)
+
+
+summary(fit_species)
+
+plot(
+  fit_species,
+  log = "x",
+  ylim = c(0, 100),
+  xlab = "Flecainide concentration (µM)",
+  ylab = "Fractional current inhibition (%)"
+)
+
+
+
+
 ```
 
 
