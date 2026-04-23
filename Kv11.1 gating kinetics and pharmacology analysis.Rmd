@@ -48,7 +48,7 @@ To determine voltage dependence of activation, normalized peak tail currents wil
 
 Normalized peak current is obtained by making a mean of the peak tail current during the repolarising P2 pulse for each previous Epoch level (which is the voltage of the depolarising P1 pulse) using Clampex software. For each cell and recording, the peak tail current (in pA) and corresponding membrane voltage (in mV) during the preceding depolarising pulse is put in a long format excel. This peak tail current is than normalized to the maximal peak tail current of that recording. Membrane capacitance (in pF) and access resistance (in MOhms) is also in this long format excel for each cell.
 
-For each membrane voltage level, a mean ± SEM of I~norm~ for all analysed cells is made, these values are then plotted and fitted with the abovementioned Boltzmann curve. 
+For each membrane voltage level, a mean ± SEM of I~norm~ for all analysed cells is made, these values are then plotted and fitted with the abovementioned Boltzmann curve. This generates a fit for each species that can be used for the publication. For really comparing species, for each cell seperately a fit was made and V0.5 and k are extracted from this, so that a statistical test can be applied using the data of each cell. I also made a quick diagnostic figure in which you can visually see all fits for each cell, to inspect if a good fit was made and the extracted coefficients can be trusted. This seperate fitting is currently only done for P1 = 2000 ms, I should adapt my code so that this is also done for the other P1 but as I dont have a lot of recordings for these yet I have not yet done this. (s the output csv file for boltzmann coeffecients should currentle be ignored until this is fixed)
 
 ### P1 duration 500 ms
 ```{r}
@@ -109,7 +109,7 @@ n_per_species_500
 # Make a wide summary data frame giving the tailcurrent for equine and human for each Vm
 library(tidyr)
 summary_wide_500 <- summary_df_500 %>%
-  select(Species, Membrane_voltage, mean_Inorm, SEM_Inorm) %>%
+  dplyr::select(Species, Membrane_voltage, mean_Inorm, SEM_Inorm) %>%
   pivot_wider(
     names_from  = Species,
     values_from = c(mean_Inorm, SEM_Inorm),
@@ -243,7 +243,99 @@ df_2000 <- df_norm %>%
   filter(P1 == 2000)
 View(df_2000)
 
-# Make a summary data frame with mean and SEM for each species
+# Define Boltzmann function
+Boltzmann <- function(V, V05, k) {1/(1 + exp((V05 - V)/ k))}
+
+# Function to fit one cell
+library(dplyr)
+library(purrr)
+
+fit_one_cell <- function(df_cell) {
+  # initial guesses
+  V05_g <- df_cell$Membrane_voltage[which.min(abs(df_cell$norm_tailcurrent - 0.5))]
+  k_g   <- (max(df_cell$Membrane_voltage) - min(df_cell$Membrane_voltage)) / 8
+  
+  # try fitting
+  fit <- try(
+    nls(norm_tailcurrent ~ Boltzmann(Membrane_voltage, V05, k),
+        data  = df_cell,
+        start = list(V05 = V05_g, k = k_g)),
+    silent = TRUE
+  )
+  
+  # If fit failed → return NA values but keep the cell
+  if (inherits(fit, "try-error")) {
+    return(tibble(
+      Cell       = unique(df_cell$Cell),
+      Species    = unique(df_cell$Species),
+      V05        = NA_real_,
+      k          = NA_real_,
+      fit_status = "failed"
+    ))
+  }
+  
+  # If fit succeeded
+  coefs <- coef(fit)
+  tibble(
+    Cell       = unique(df_cell$Cell),
+    Species    = unique(df_cell$Species),
+    V05        = coefs["V05"],
+    k          = coefs["k"],
+    fit_status = "ok"
+  )
+}
+
+
+# Apply per cell
+per_cell_fits <- df_2000 %>%
+  group_by(Cell, Species) %>%
+  group_split() %>%
+  map_dfr(fit_one_cell)
+
+per_cell_fits
+
+# Generate predictions for each cell
+vseq <- seq(min(df_2000$Membrane_voltage),
+            max(df_2000$Membrane_voltage),
+            length.out = 300)
+
+per_cell_pred <- df_2000 %>%
+  group_by(Cell, Species) %>%
+  group_split() %>%
+  map_dfr(function(df_cell) {
+    # get the fit results for this cell
+    fit_row <- per_cell_fits %>% filter(Cell == unique(df_cell$Cell))
+    
+    # skip failed fits
+    if (fit_row$fit_status == "failed") return(NULL)
+    
+    tibble(
+      Cell = unique(df_cell$Cell),
+      Species = unique(df_cell$Species),
+      Membrane_voltage = vseq,
+      fit = Boltzmann(vseq, fit_row$V05, fit_row$k)
+    )
+  })
+
+# Plot raw data + fit per cell
+library(ggplot2)
+
+ggplot() +
+  geom_point(data = df_2000,
+             aes(Membrane_voltage, norm_tailcurrent),
+             size = 2, alpha = 0.6) +
+  geom_line(data = per_cell_pred,
+            aes(Membrane_voltage, fit),
+            color = "red", linewidth = 0.8) +
+  facet_wrap(~ Cell + Species, scales = "free") +
+  theme_bw() +
+  labs(title = "Per-cell Boltzmann Fits (QC)",
+       x = "Voltage (mV)",
+       y = "Normalized tail current")
+
+# Make a summary data frame with mean and SEM for each species 
+  #(for the figure: first derive mean +SEM of all normalized peak tail currents and fit the means)
+
 library(dplyr)
 summary_df_2000 <- df_2000 %>%
   group_by(Species, `Membrane_voltage`) %>%
@@ -267,7 +359,7 @@ n_per_species_2000
 # Make a wide summary data frame giving the tailcurrent for equine and human for each Vm
 library(tidyr)
 summary_wide_2000 <- summary_df_2000 %>%
-  select(Species, Membrane_voltage, mean_Inorm, SEM_Inorm) %>%
+  dplyr::select(Species, Membrane_voltage, mean_Inorm, SEM_Inorm) %>%
   pivot_wider(
     names_from  = Species,
     values_from = c(mean_Inorm, SEM_Inorm),
@@ -276,8 +368,6 @@ summary_wide_2000 <- summary_df_2000 %>%
   arrange(Membrane_voltage)
 View(summary_wide_2000)
 
-# Define Boltzmann function
-Boltzmann <- function(V, V05, k) {1/(1 + exp((V05 - V)/ k))}
 
 # Species-specific initial guesses
 guess_params <- function(df) {
@@ -352,18 +442,70 @@ ggplot(summary_df_2000, aes(x = Membrane_voltage, y = mean_Inorm, color = Specie
 
 ggsave("IV_curve_Kv11.1_Equine_Human_P1_2000.png", width = 10, height = 5, dpi = 600)
 
-# Create a table with Vhalf and slope
-coef_equine_2000 <- summary(Boltzmann_equine_2000)$coefficients
-coef_human_2000  <- summary(Boltzmann_human_2000)$coefficients
+#test for normality
+good_fits <- per_cell_fits %>% 
+  filter(fit_status == "ok")
 
-Boltzmann_table_2000 <- data.frame(
-  Species = c("Equine", "Human"),
-  V05 = c(coef_equine_2000["V05","Estimate"], coef_human_2000["V05","Estimate"]),
-  V05_SEM = c(coef_equine_2000["V05","Std. Error"], coef_human_2000["V05","Std. Error"]),
-  k = c(coef_equine_2000["k","Estimate"], coef_human_2000["k","Estimate"]),
-  k_SEM = c(coef_equine_2000["k","Std. Error"], coef_human_2000["k","Std. Error"]))
+shapiro.test(good_fits %>% filter(Species == "Human") %>% pull(V05))
+shapiro.test(good_fits %>% filter(Species == "Equine") %>% pull(V05))
+
+ggplot(good_fits, aes(V05, fill = Species)) +
+  geom_histogram(alpha = 0.6, bins = 10) +
+  facet_wrap(~ Species) +
+  theme_bw()
+
+ggplot(good_fits, aes(sample = V05)) +
+  stat_qq() +
+  stat_qq_line() +
+  facet_wrap(~ Species) +
+  theme_bw()
+
+shapiro.test(good_fits %>% filter(Species == "Human") %>% pull(k))
+shapiro.test(good_fits %>% filter(Species == "Equine") %>% pull(k))
+
+ggplot(good_fits, aes(k, fill = Species)) +
+  geom_histogram(alpha = 0.6, bins = 10) +
+  facet_wrap(~ Species) +
+  theme_bw()
+
+ggplot(good_fits, aes(sample = k)) +
+  stat_qq() +
+  stat_qq_line() +
+  facet_wrap(~ Species) +
+  theme_bw()
+
+#test
+
+  #if normally distributed, use t-test, otherwise use Wilcoxon rank-sum, in this case currently not normally distributed
+
+wilcox.test(V05 ~ Species, data = good_fits)
+wilcox.test(k ~ Species, data = good_fits)
+
+
+# Create a table with Vhalf and slope
+activation_summary <- good_fits %>%
+  group_by(Species) %>%
+  summarise(
+    mean_V05 = mean(V05, na.rm = TRUE),
+    SEM_V05  = sd(V05, na.rm = TRUE) / sqrt(n()),
+    
+    mean_k   = mean(k, na.rm = TRUE),
+    SEM_k    = sd(k, na.rm = TRUE) / sqrt(n()),
+    
+    n_cells  = n(),
+    .groups = "drop"
+  )
+
+activation_summary
+
+Boltzmann_table_2000 <- activation_summary %>%
+  dplyr :: select(Species, 
+         V05 = mean_V05, V05_SEM = SEM_V05,
+         k = mean_k, k_SEM = SEM_k,
+         n_cells)
 
 Boltzmann_table_2000
+
 ```
 
 ### P1 duration 4000 ms
@@ -425,7 +567,7 @@ n_per_species_4000
 # Make a wide summary data frame giving the tailcurrent for equine and human for each Vm
 library(tidyr)
 summary_wide_4000 <- summary_df_4000 %>%
-  select(Species, Membrane_voltage, mean_Inorm, SEM_Inorm) %>%
+  dplyr::select(Species, Membrane_voltage, mean_Inorm, SEM_Inorm) %>%
   pivot_wider(
     names_from  = Species,
     values_from = c(mean_Inorm, SEM_Inorm),
@@ -717,16 +859,6 @@ Boltzmann_combined <- rbind(
 write.csv(Boltzmann_combined, "Kv11.1_Equine_Human_Boltzmann_coefficients.csv", row.names = FALSE)
 ```
 
-### Ceate csv file with Boltzmann parameters
-```{r}
-Boltzmann_combined <- rbind(
-  cbind(P1 = 500, Boltzmann_table_500),
-  cbind(P1 = 2000, Boltzmann_table_2000),
-  cbind(P1 = 4000, Boltzmann_table_4000)
-)
-
-write.csv(Boltzmann_combined, "Kv11.1_Equine_Human_Boltzmann_coefficients.csv", row.names = FALSE)
-```
 
 ## Rates of activation
 
@@ -755,11 +887,12 @@ df <- Pharmacology_Equine_Human %>%
   filter(Membrane_voltage == 40) %>%
   filter(DMSO_conc == 0.1) %>%
   filter(Compound_conc_µM %in% c(0,0.1,0.3,1,1.5,3,10,30,100)) %>%
-  select(Cell, Species, Compound_conc_µM, Peak_tail_current)
+  dplyr::select(Cell, Species, Compound_conc_µM, Peak_tail_current)
+
 
 vehicle_df <- df %>%
   filter(Compound_conc_µM == 0) %>%
-  select(Cell, tailcurrent_0 = Peak_tail_current)
+  dplyr::select(Cell, tailcurrent_0 = Peak_tail_current)
 
 Fractionalblock_flecainide <- df %>%
   group_by(Cell) %>%
@@ -817,10 +950,6 @@ plot(
   xlab = "Flecainide concentration (µM)",
   ylab = "Fractional current inhibition (%)"
 )
-
-
-
-
 ```
 
 
